@@ -36,7 +36,7 @@ class AnswerRequest(BaseModel):
 # GET INTERVIEW
 # ============================================================
 
-@router.get("/interview/{token}")
+@router.get("/{token}")
 def get_interview(
     token: str,
     db: Session = Depends(get_db)
@@ -51,12 +51,14 @@ def get_interview(
     )
 
     if not interview:
+
         raise HTTPException(
             status_code=404,
             detail="Interview not found."
         )
 
     if interview.status == "completed":
+
         raise HTTPException(
             status_code=400,
             detail="This interview has already been completed."
@@ -75,26 +77,44 @@ def get_interview(
     )
 
     if not question:
+
         raise HTTPException(
             status_code=404,
             detail="Interview question not found."
         )
 
+    # --------------------------------------------------------
     # Mark interview as started
+    # --------------------------------------------------------
+
     if interview.started_at is None:
 
         interview.started_at = datetime.utcnow()
+
         interview.status = "in_progress"
 
         db.commit()
 
+        db.refresh(interview)
+
     return {
-        "candidate_id": interview.candidate.id,
-        "candidate_name": interview.candidate.name,
-        "interview_id": interview.id,
-        "question_id": question.id,
-        "question": question.question,
-        "status": interview.status
+        "candidate_id":
+            interview.candidate.id,
+
+        "candidate_name":
+            interview.candidate.name,
+
+        "interview_id":
+            interview.id,
+
+        "question_id":
+            question.id,
+
+        "question":
+            question.question,
+
+        "status":
+            interview.status
     }
 
 
@@ -102,7 +122,7 @@ def get_interview(
 # SUBMIT ANSWER
 # ============================================================
 
-@router.post("/interview/{token}/answer")
+@router.post("/{token}/answer")
 def submit_answer(
     token: str,
     request: AnswerRequest,
@@ -169,10 +189,21 @@ def submit_answer(
     # Evaluate answer
     # ========================================================
 
-    evaluation = eval_answer(
-        question=question.question,
-        answer=request.answer
-    )
+    try:
+
+        evaluation = eval_answer(
+            question=question.question,
+            answer=request.answer
+        )
+
+    except Exception as e:
+
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Answer evaluation failed: {str(e)}"
+        )
 
     # ========================================================
     # Save candidate answer
@@ -180,7 +211,8 @@ def submit_answer(
 
     candidate_answer = CandidateAnswer(
         question_id=question.id,
-        answer=request.answer
+        answer=request.answer,
+        answered_at=datetime.utcnow()
     )
 
     db.add(candidate_answer)
@@ -191,21 +223,53 @@ def submit_answer(
     # Save evaluation
     # ========================================================
 
+    missing_points = (
+        evaluation.missing_points
+        if evaluation.missing_points
+        else []
+    )
+
+    mistakes = (
+        evaluation.mistakes
+        if evaluation.mistakes
+        else []
+    )
+
+    weaknesses = (
+        missing_points
+        + mistakes
+    )
+
     evaluation_record = Evaluation(
         answer_id=candidate_answer.id,
+
+        technical_score=str(
+            evaluation.technical_correctness
+        ),
+
+        relevance_score=str(
+            evaluation.relevance
+        ),
+
+        depth_score=str(
+            evaluation.depth
+        ),
 
         overall_score=str(
             evaluation.score
         ),
 
-        feedback=evaluation.overall_feedback,
+        feedback=(
+            evaluation.overall_feedback
+        ),
 
-        strengths=evaluation.strengths,
+        strengths=(
+            evaluation.strengths
+            if evaluation.strengths
+            else []
+        ),
 
-        weaknesses=(
-            evaluation.missing_points
-            + evaluation.mistakes
-        )
+        weaknesses=weaknesses
     )
 
     db.add(evaluation_record)
@@ -225,9 +289,12 @@ def submit_answer(
     db.commit()
 
     return {
-        "message": "Answer submitted successfully.",
 
-        "score": evaluation.score,
+        "message":
+            "Answer submitted successfully.",
+
+        "score":
+            evaluation.score,
 
         "technical_correctness":
             evaluation.technical_correctness,

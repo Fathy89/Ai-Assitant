@@ -20,23 +20,31 @@ Base.metadata.create_all(
 )
 
 
+from fastapi import FastAPI
+
+from routers import candidates
+from routers import hr
+from routers import interview
+
+app = FastAPI()
+
+
 app.include_router(
     candidates.router,
     prefix="/candidates",
     tags=["Candidates"]
 )
 
+app.include_router(
+    interview.router,
+    prefix="/interview",
+    tags=["Interview"]
+)
 
 app.include_router(
     hr.router,
     prefix="/hr",
     tags=["HR"]
-)
-
-
-app.include_router(
-    interview.router,
-    tags=["Interview"]
 )
 
 

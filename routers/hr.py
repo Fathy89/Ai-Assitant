@@ -13,9 +13,9 @@ from database.models import Candidate
 from schemas.hr import (
     HRChatRequest,
     HRChatResponse,
-    HRSource
+    HRSource,
+    HRInterviewInfo
 )
-
 from Services.hr_rag import (
     hr_rag_chat
 )
@@ -27,7 +27,6 @@ router = APIRouter()
 # ============================================================
 # HR CHAT
 # ============================================================
-
 @router.post(
     "/chat",
     response_model=HRChatResponse
@@ -47,12 +46,9 @@ def chat(
     if not request.message.strip():
 
         raise HTTPException(
-
             status_code=400,
-
             detail="Message cannot be empty."
         )
-
 
     # --------------------------------------------------------
     # Candidate validation
@@ -61,27 +57,20 @@ def chat(
     if request.candidate_id is not None:
 
         candidate = (
-
             db.query(Candidate)
-
             .filter(
                 Candidate.id
                 == request.candidate_id
             )
-
             .first()
         )
-
 
         if not candidate:
 
             raise HTTPException(
-
                 status_code=404,
-
                 detail="Candidate not found."
             )
-
 
     # --------------------------------------------------------
     # RAG
@@ -95,14 +84,15 @@ def chat(
 
             question=request.message,
 
-            candidate_id=request.candidate_id,
+            candidate_id=
+                request.candidate_id,
 
-            conversation_id=request.conversation_id
+            conversation_id=
+                request.conversation_id
         )
 
-
         # ----------------------------------------------------
-        # Sources
+        # CV Sources
         # ----------------------------------------------------
 
         sources = [
@@ -131,6 +121,48 @@ def chat(
             for source in result["sources"]
         ]
 
+        # ----------------------------------------------------
+        # Interview information
+        # ----------------------------------------------------
+
+        interview_information = [
+
+            HRInterviewInfo(
+
+                candidate_id=
+                    info["candidate_id"],
+
+                candidate_name=
+                    info["candidate_name"],
+
+                interview_status=
+                    info["interview_status"],
+
+                overall_score=
+                    info["overall_score"],
+
+                overview=
+                    info["overview"],
+
+                strengths=
+                    info["strengths"],
+
+                weaknesses=
+                    info["weaknesses"],
+
+                recommendation=
+                    info["recommendation"],
+
+                started_at=
+                    info["started_at"],
+
+                finished_at=
+                    info["finished_at"]
+            )
+
+            for info
+            in result["interview_information"]
+        ]
 
         return HRChatResponse(
 
@@ -141,9 +173,11 @@ def chat(
                 result["conversation_id"],
 
             sources=
-                sources
-        )
+                sources,
 
+            interview_information=
+                interview_information
+        )
 
     except Exception as e:
 

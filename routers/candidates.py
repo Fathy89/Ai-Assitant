@@ -41,28 +41,132 @@ router = APIRouter()
 # GET ALL CANDIDATES
 # ============================================================
 
-@router.get("")
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from database.connection import get_db
+from database.models import (
+    Candidate,
+    Interview
+)
+
+router = APIRouter()
+
+
+# ============================================================
+# GET ALL CANDIDATES
+# ============================================================
+
+@router.get("/")
 def get_candidates(
     db: Session = Depends(get_db)
 ):
+
     candidates = (
         db.query(Candidate)
-        .order_by(Candidate.created_at.desc())
+        .order_by(Candidate.id.desc())
         .all()
     )
 
-    return [
-        {
-            "id": candidate.id,
-            "name": candidate.name,
-            "email": candidate.email,
-            "phone": candidate.phone,
-            "location": candidate.location
-        }
-        for candidate in candidates
-    ]
+    result = []
 
+    for candidate in candidates:
 
+        # ----------------------------------------------------
+        # Get latest interview
+        # ----------------------------------------------------
+
+        interview = (
+            db.query(Interview)
+            .filter(
+                Interview.candidate_id
+                == candidate.id
+            )
+            .order_by(
+                Interview.id.desc()
+            )
+            .first()
+        )
+
+        # ----------------------------------------------------
+        # Default values
+        # ----------------------------------------------------
+
+        interview_status = "not_started"
+
+        overall_score = None
+
+        interview_id = None
+
+        started_at = None
+
+        finished_at = None
+
+        # ----------------------------------------------------
+        # Interview exists
+        # ----------------------------------------------------
+
+        if interview:
+
+            interview_id = interview.id
+
+            interview_status = (
+                interview.status
+                or "pending"
+            )
+
+            overall_score = (
+                interview.overall_score
+            )
+
+            started_at = (
+                interview.started_at
+            )
+
+            finished_at = (
+                interview.finished_at
+            )
+
+        # ----------------------------------------------------
+        # Candidate response
+        # ----------------------------------------------------
+
+        result.append(
+            {
+                "id": candidate.id,
+
+                "name": candidate.name,
+
+                "email": candidate.email,
+
+                "phone": candidate.phone,
+
+                "location": candidate.location,
+
+                "cv_file_path":
+                    candidate.cv_file_path,
+
+                "interview_id":
+                    interview_id,
+
+                "interview_status":
+                    interview_status,
+
+                "overall_score":
+                    overall_score,
+
+                "started_at":
+                    started_at,
+
+                "finished_at":
+                    finished_at,
+
+                "created_at":
+                    candidate.created_at
+            }
+        )
+
+    return result
 # ============================================================
 # UPLOAD CV
 # ============================================================

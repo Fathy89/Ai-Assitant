@@ -44,6 +44,9 @@ if "answer_submitted" not in st.session_state:
 if "evaluation" not in st.session_state:
     st.session_state.evaluation = None
 
+if "pending_question" not in st.session_state:
+    st.session_state.pending_question = None
+
 
 # ============================================================
 # API FUNCTIONS
@@ -70,6 +73,10 @@ def get_candidates():
 
         return []
 
+
+# ============================================================
+# UPLOAD CV
+# ============================================================
 
 def upload_cv(uploaded_file):
 
@@ -119,6 +126,10 @@ def upload_cv(uploaded_file):
         return None
 
 
+# ============================================================
+# GET INTERVIEW
+# ============================================================
+
 def get_interview(token):
 
     try:
@@ -138,12 +149,18 @@ def get_interview(token):
 
         if response.status_code == 400:
 
-            st.error(
-                response.json().get(
+            try:
+
+                detail = response.json().get(
                     "detail",
                     "This interview is no longer available."
                 )
-            )
+
+            except Exception:
+
+                detail = response.text
+
+            st.error(detail)
 
             return None
 
@@ -159,6 +176,10 @@ def get_interview(token):
 
         return None
 
+
+# ============================================================
+# SUBMIT ANSWER
+# ============================================================
 
 def submit_answer(token, answer):
 
@@ -202,6 +223,10 @@ def submit_answer(token, answer):
         return None
 
 
+# ============================================================
+# HR CHAT
+# ============================================================
+
 def send_hr_message(
     message,
     candidate_id=None
@@ -210,8 +235,9 @@ def send_hr_message(
     payload = {
         "message": message,
         "candidate_id": candidate_id,
-        "conversation_id":
+        "conversation_id": (
             st.session_state.conversation_id
+        )
     }
 
     try:
@@ -221,6 +247,26 @@ def send_hr_message(
             json=payload,
             timeout=120
         )
+
+        if response.status_code >= 400:
+
+            try:
+
+                detail = response.json().get(
+                    "detail",
+                    "HR API request failed."
+                )
+
+            except Exception:
+
+                detail = response.text
+
+            st.error(
+                f"HR API Error {response.status_code}: "
+                f"{detail}"
+            )
+
+            return None
 
         response.raise_for_status()
 
@@ -367,12 +413,9 @@ def candidate_interview_page(token):
             )
 
         if interview is None:
-
             return
 
-        st.session_state.interview_data = (
-            interview
-        )
+        st.session_state.interview_data = interview
 
     else:
 
@@ -604,22 +647,108 @@ def candidate_interview_page(token):
 
 
 # ============================================================
-# HR DASHBOARD
+# STATUS HELPERS
 # ============================================================
 
-def hr_dashboard():
+def get_interview_status_display(status):
 
-    st.title(
-        "👔 HR Dashboard"
+    if status is None:
+
+        return (
+            "⚪",
+            "Not Started"
+        )
+
+    status = str(status).lower().strip()
+
+    if status in [
+        "completed",
+        "complete",
+        "finished"
+    ]:
+
+        return (
+            "🟢",
+            "Completed"
+        )
+
+    if status in [
+        "in_progress",
+        "in progress",
+        "started",
+        "active"
+    ]:
+
+        return (
+            "🟡",
+            "In Progress"
+        )
+
+    if status in [
+        "pending",
+        "not_started",
+        "not started"
+    ]:
+
+        return (
+            "⚪",
+            "Not Started"
+        )
+
+    if status in [
+        "expired"
+    ]:
+
+        return (
+            "🔴",
+            "Expired"
+        )
+
+    if status in [
+        "cancelled",
+        "canceled"
+    ]:
+
+        return (
+            "🔴",
+            "Cancelled"
+        )
+
+    return (
+        "⚪",
+        status.title()
     )
 
-    st.caption(
-        "AI-powered candidate search and recruitment assistant"
-    )
 
-    # ========================================================
-    # SIDEBAR
-    # ========================================================
+# ============================================================
+# FORMAT SCORE
+# ============================================================
+
+def format_score(score):
+
+    if score is None:
+
+        return "⭐ No score"
+
+    score_string = str(score).strip()
+
+    if not score_string:
+
+        return "⭐ No score"
+
+    # If backend already sends something like 85/100
+    if "/" in score_string:
+
+        return f"⭐ {score_string}"
+
+    return f"⭐ {score_string}/100"
+
+
+# ============================================================
+# HR SIDEBAR
+# ============================================================
+
+def render_hr_sidebar():
 
     with st.sidebar:
 
@@ -629,51 +758,192 @@ def hr_dashboard():
 
         candidates = get_candidates()
 
-        candidate_options = [
-            {
-                "id": None,
-                "name": "🌎 All Candidates"
-            }
-        ]
+        # ----------------------------------------------------
+        # No candidates
+        # ----------------------------------------------------
+
+        if not candidates:
+
+            st.info(
+                "No candidates found."
+            )
+
+        # ----------------------------------------------------
+        # All candidates
+        # ----------------------------------------------------
+
+        all_selected = (
+            st.session_state.selected_candidate is None
+        )
+
+        if st.button(
+            "🌎 All Candidates",
+            key="all_candidates_button",
+            use_container_width=True,
+            type=(
+                "primary"
+                if all_selected
+                else "secondary"
+            )
+        ):
+
+            st.session_state.selected_candidate = None
+
+            st.session_state.messages = []
+
+            st.session_state.conversation_id = None
+
+            st.rerun()
+
+        st.divider()
+
+        # ----------------------------------------------------
+        # Candidate cards
+        # ----------------------------------------------------
 
         for candidate in candidates:
 
-            candidate_options.append(
-                {
-                    "id": candidate["id"],
-                    "name": candidate["name"]
-                }
+            candidate_id = candidate.get(
+                "id"
             )
 
-        candidate_names = [
-            candidate["name"]
-            for candidate in candidate_options
-        ]
+            candidate_name = candidate.get(
+                "name",
+                "Unknown Candidate"
+            )
 
-        selected_name = st.selectbox(
-            "Search scope",
-            candidate_names
-        )
+            interview_status = candidate.get(
+                "interview_status",
+                "not_started"
+            )
 
-        selected = next(
-            (
-                candidate
-                for candidate in candidate_options
-                if candidate["name"] == selected_name
-            ),
-            None
-        )
+            score = candidate.get(
+                "overall_score"
+            )
 
-        if selected:
+            status_icon, status_text = (
+                get_interview_status_display(
+                    interview_status
+                )
+            )
 
-            st.session_state.selected_candidate = (
-                selected["id"]
+            score_text = format_score(
+                score
+            )
+
+            is_selected = (
+                st.session_state.selected_candidate
+                == candidate_id
+            )
+
+            # ------------------------------------------------
+            # Candidate button
+            # ------------------------------------------------
+
+            if st.button(
+                f"👤 {candidate_name}",
+                key=f"candidate_{candidate_id}",
+                use_container_width=True,
+                type=(
+                    "primary"
+                    if is_selected
+                    else "secondary"
+                )
+            ):
+
+                st.session_state.selected_candidate = (
+                    candidate_id
+                )
+
+                st.session_state.messages = []
+
+                st.session_state.conversation_id = None
+
+                st.rerun()
+
+            # ------------------------------------------------
+            # Status
+            # ------------------------------------------------
+
+            st.caption(
+                f"{status_icon} {status_text}"
+            )
+
+            # ------------------------------------------------
+            # Score
+            # ------------------------------------------------
+
+            st.caption(
+                score_text
+            )
+
+            st.markdown(
+                "<div style='height: 5px'></div>",
+                unsafe_allow_html=True
             )
 
         st.divider()
 
+        # ----------------------------------------------------
+        # Selected candidate information
+        # ----------------------------------------------------
+
+        selected_id = (
+            st.session_state.selected_candidate
+        )
+
+        if selected_id is not None:
+
+            selected_candidate = next(
+                (
+                    candidate
+                    for candidate in candidates
+                    if candidate.get("id")
+                    == selected_id
+                ),
+                None
+            )
+
+            if selected_candidate:
+
+                st.markdown(
+                    "### 🎯 Selected Candidate"
+                )
+
+                st.write(
+                    f"**{selected_candidate.get('name')}**"
+                )
+
+                status_icon, status_text = (
+                    get_interview_status_display(
+                        selected_candidate.get(
+                            "interview_status"
+                        )
+                    )
+                )
+
+                st.write(
+                    f"{status_icon} "
+                    f"**{status_text}**"
+                )
+
+                st.write(
+                    format_score(
+                        selected_candidate.get(
+                            "overall_score"
+                        )
+                    )
+                )
+
+        st.divider()
+
+        # ----------------------------------------------------
+        # New conversation
+        # ----------------------------------------------------
+
         if st.button(
             "➕ New Conversation",
+            key="new_conversation",
             use_container_width=True
         ):
 
@@ -684,6 +954,10 @@ def hr_dashboard():
             st.rerun()
 
         st.divider()
+
+        # ----------------------------------------------------
+        # Example questions
+        # ----------------------------------------------------
 
         st.markdown(
             "### 💡 Example Questions"
@@ -703,14 +977,23 @@ def hr_dashboard():
             "Does this candidate have experience "
             "with PostgreSQL?",
 
-            "Compare candidates based on Python experience."
+            "Compare candidates based on Python experience.",
+
+            "Show me this candidate's interview score.",
+
+            "What are this candidate's strengths?",
+
+            "What are this candidate's weaknesses?",
+
+            "Should we hire this candidate?"
 
         ]
 
-        for example in examples:
+        for index, example in enumerate(examples):
 
             if st.button(
                 example,
+                key=f"example_{index}",
                 use_container_width=True
             ):
 
@@ -720,17 +1003,63 @@ def hr_dashboard():
 
                 st.rerun()
 
-    # ========================================================
-    # CHAT
-    # ========================================================
 
-    st.subheader(
-        "💬 HR Assistant"
+# ============================================================
+# HR DASHBOARD
+# ============================================================
+
+def hr_dashboard():
+
+    st.title(
+        "👔 HR Dashboard"
     )
 
-    # --------------------------------------------------------
-    # Previous messages
-    # --------------------------------------------------------
+    st.caption(
+        "AI-powered candidate search and recruitment assistant"
+    )
+
+    # ========================================================
+    # SIDEBAR
+    # ========================================================
+
+    render_hr_sidebar()
+
+    # ========================================================
+    # CURRENT SELECTION
+    # ========================================================
+
+    selected_candidate_id = (
+        st.session_state.selected_candidate
+    )
+
+    # ========================================================
+    # MAIN HEADER
+    # ========================================================
+
+    if selected_candidate_id is None:
+
+        st.subheader(
+            "💬 HR Assistant"
+        )
+
+        st.caption(
+            "Searching across all candidates"
+        )
+
+    else:
+
+        st.subheader(
+            "💬 HR Assistant"
+        )
+
+        st.caption(
+            f"Searching candidate ID: "
+            f"{selected_candidate_id}"
+        )
+
+    # ========================================================
+    # PREVIOUS MESSAGES
+    # ========================================================
 
     for message in st.session_state.messages:
 
@@ -741,6 +1070,10 @@ def hr_dashboard():
             st.markdown(
                 message["content"]
             )
+
+            # ------------------------------------------------
+            # CV Sources
+            # ------------------------------------------------
 
             if (
                 message["role"] == "assistant"
@@ -775,6 +1108,17 @@ def hr_dashboard():
                             f"{source.get('chunk_id')}"
                         )
 
+                        score = source.get(
+                            "score"
+                        )
+
+                        if score is not None:
+
+                            st.write(
+                                f"**Retrieval Score:** "
+                                f"{score:.4f}"
+                            )
+
                         st.write(
                             source.get(
                                 "content",
@@ -784,9 +1128,125 @@ def hr_dashboard():
 
                         st.divider()
 
-    # --------------------------------------------------------
-    # Input
-    # --------------------------------------------------------
+            # ------------------------------------------------
+            # Interview Information
+            # ------------------------------------------------
+
+            if (
+                message["role"] == "assistant"
+                and message.get(
+                    "interview_information"
+                )
+            ):
+
+                interview_information = (
+                    message[
+                        "interview_information"
+                    ]
+                )
+
+                with st.expander(
+                    "📊 Interview Information"
+                ):
+
+                    for info in interview_information:
+
+                        st.markdown(
+                            f"### 👤 "
+                            f"{info.get('candidate_name')}"
+                        )
+
+                        status = info.get(
+                            "interview_status"
+                        )
+
+                        status_icon, status_text = (
+                            get_interview_status_display(
+                                status
+                            )
+                        )
+
+                        st.write(
+                            f"{status_icon} "
+                            f"**Status:** "
+                            f"{status_text}"
+                        )
+
+                        score = info.get(
+                            "overall_score"
+                        )
+
+                        if score:
+
+                            st.write(
+                                f"⭐ **Score:** "
+                                f"{score}/100"
+                            )
+
+                        recommendation = info.get(
+                            "recommendation"
+                        )
+
+                        if recommendation:
+
+                            st.write(
+                                f"🎯 **Recommendation:** "
+                                f"{recommendation}"
+                            )
+
+                        overview = info.get(
+                            "overview"
+                        )
+
+                        if overview:
+
+                            st.markdown(
+                                "#### 📝 Overview"
+                            )
+
+                            st.write(
+                                overview
+                            )
+
+                        strengths = info.get(
+                            "strengths",
+                            []
+                        )
+
+                        if strengths:
+
+                            st.markdown(
+                                "#### 💪 Strengths"
+                            )
+
+                            for strength in strengths:
+
+                                st.write(
+                                    f"• {strength}"
+                                )
+
+                        weaknesses = info.get(
+                            "weaknesses",
+                            []
+                        )
+
+                        if weaknesses:
+
+                            st.markdown(
+                                "#### ⚠️ Weaknesses"
+                            )
+
+                            for weakness in weaknesses:
+
+                                st.write(
+                                    f"• {weakness}"
+                                )
+
+                        st.divider()
+
+    # ========================================================
+    # CHAT INPUT
+    # ========================================================
 
     pending_question = st.session_state.pop(
         "pending_question",
@@ -801,6 +1261,10 @@ def hr_dashboard():
 
         prompt = pending_question
 
+    # ========================================================
+    # SEND MESSAGE
+    # ========================================================
+
     if prompt:
 
         st.session_state.messages.append(
@@ -814,14 +1278,16 @@ def hr_dashboard():
             "user"
         ):
 
-            st.markdown(prompt)
+            st.markdown(
+                prompt
+            )
 
         with st.chat_message(
             "assistant"
         ):
 
             with st.spinner(
-                "🔎 Searching candidate CVs..."
+                "🔎 Searching CVs and interview information..."
             ):
 
                 result = send_hr_message(
@@ -844,15 +1310,28 @@ def hr_dashboard():
                     []
                 )
 
+                interview_information = result.get(
+                    "interview_information",
+                    []
+                )
+
                 st.session_state.conversation_id = (
                     result.get(
                         "conversation_id"
                     )
                 )
 
+                # ------------------------------------------------
+                # Answer
+                # ------------------------------------------------
+
                 st.markdown(
                     answer
                 )
+
+                # ------------------------------------------------
+                # CV sources
+                # ------------------------------------------------
 
                 if sources:
 
@@ -884,6 +1363,17 @@ def hr_dashboard():
                                 f"{source.get('chunk_id')}"
                             )
 
+                            score = source.get(
+                                "score"
+                            )
+
+                            if score is not None:
+
+                                st.write(
+                                    f"**Retrieval Score:** "
+                                    f"{score:.4f}"
+                                )
+
                             st.write(
                                 source.get(
                                     "content",
@@ -893,11 +1383,118 @@ def hr_dashboard():
 
                             st.divider()
 
+                # ------------------------------------------------
+                # Interview information
+                # ------------------------------------------------
+
+                if interview_information:
+
+                    with st.expander(
+                        "📊 Interview Information"
+                    ):
+
+                        for info in interview_information:
+
+                            st.markdown(
+                                f"### 👤 "
+                                f"{info.get('candidate_name')}"
+                            )
+
+                            status_icon, status_text = (
+                                get_interview_status_display(
+                                    info.get(
+                                        "interview_status"
+                                    )
+                                )
+                            )
+
+                            st.write(
+                                f"{status_icon} "
+                                f"**Status:** "
+                                f"{status_text}"
+                            )
+
+                            score = info.get(
+                                "overall_score"
+                            )
+
+                            if score:
+
+                                st.write(
+                                    f"⭐ **Score:** "
+                                    f"{score}/100"
+                                )
+
+                            recommendation = info.get(
+                                "recommendation"
+                            )
+
+                            if recommendation:
+
+                                st.write(
+                                    f"🎯 **Recommendation:** "
+                                    f"{recommendation}"
+                                )
+
+                            overview = info.get(
+                                "overview"
+                            )
+
+                            if overview:
+
+                                st.markdown(
+                                    "#### 📝 Overview"
+                                )
+
+                                st.write(
+                                    overview
+                                )
+
+                            strengths = info.get(
+                                "strengths",
+                                []
+                            )
+
+                            if strengths:
+
+                                st.markdown(
+                                    "#### 💪 Strengths"
+                                )
+
+                                for strength in strengths:
+
+                                    st.write(
+                                        f"• {strength}"
+                                    )
+
+                            weaknesses = info.get(
+                                "weaknesses",
+                                []
+                            )
+
+                            if weaknesses:
+
+                                st.markdown(
+                                    "#### ⚠️ Weaknesses"
+                                )
+
+                                for weakness in weaknesses:
+
+                                    st.write(
+                                        f"• {weakness}"
+                                    )
+
+                # ------------------------------------------------
+                # Save message
+                # ------------------------------------------------
+
                 st.session_state.messages.append(
                     {
                         "role": "assistant",
                         "content": answer,
-                        "sources": sources
+                        "sources": sources,
+                        "interview_information":
+                            interview_information
                     }
                 )
 
@@ -1007,7 +1604,7 @@ else:
 
         st.write(
             "Search candidates and use AI "
-            "to analyze their CVs."
+            "to analyze their CVs and interviews."
         )
 
         if st.button(
@@ -1018,4 +1615,3 @@ else:
             st.query_params["page"] = "hr"
 
             st.rerun()
-
