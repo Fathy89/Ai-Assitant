@@ -1,6 +1,7 @@
 # Ai interviewer coach
 
 An AI-powered recruitment platform that automates CV screening, technical interviews, and candidate evaluation using **LLMs and RAG**.
+[Ai interviewer coach.pdf](https://github.com/user-attachments/files/31804585/Ai.interviewer.coach.pdf)
 
 ## Overview
 
