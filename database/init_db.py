@@ -12,19 +12,13 @@ from .models import (
 
 
 def init_database():
-
     with engine.begin() as connection:
-
         # Enable pgvector
         connection.execute(
-            text("CREATE EXTENSION IF NOT EXISTS vector")
-        )
+            text("CREATE EXTENSION IF NOT EXISTS vector"))
 
     # Create tables
-    Base.metadata.create_all(
-        bind=engine
-    )
-
+    Base.metadata.create_all(bind=engine)
     print("Database initialized successfully!")
 
 

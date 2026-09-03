@@ -1,12 +1,7 @@
 from fastapi import FastAPI
-
 from database.connection import Base, engine
 from database import models
-
-from routers import candidates
-from routers import hr
-from routers import interview
-
+from routers import candidates, hr, interview
 
 app = FastAPI(
     title="AI Recruitment Platform",
@@ -14,20 +9,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-
-Base.metadata.create_all(
-    bind=engine
-)
-
-
-from fastapi import FastAPI
-
-from routers import candidates
-from routers import hr
-from routers import interview
-
-app = FastAPI()
-
+Base.metadata.create_all(bind=engine)
 
 app.include_router(
     candidates.router,
@@ -50,7 +32,6 @@ app.include_router(
 
 @app.get("/")
 def root():
-
     return {
         "message": "AI Recruitment API is running",
         "status": "success"
@@ -59,7 +40,6 @@ def root():
 
 @app.get("/health")
 def health():
-
     return {
         "status": "healthy"
     }

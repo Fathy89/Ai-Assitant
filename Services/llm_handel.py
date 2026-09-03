@@ -1,35 +1,21 @@
 from models.cv_extracted import CVSchema, AnswerEvaluation
-
 from dotenv import load_dotenv
+from langchain_cohere import ChatCohere
 import os
 import re
 
-from langchain_cohere import ChatCohere
 
-
-# ============================================================
 # LOAD ENVIRONMENT VARIABLES
-# ============================================================
-
 load_dotenv()
 
 COHERE_API_KEY = os.getenv("COHERE_API_KEY")
-
-MODEL_NAME = os.getenv(
-    "MODEL_NAME",
-    "command-a-03-2025"
-)
+MODEL_NAME = os.getenv("MODEL_NAME", "command-a-03-2025")
 
 if not COHERE_API_KEY:
-    raise ValueError(
-        "COHERE_API_KEY is not set in .env"
-    )
+    raise ValueError("COHERE_API_KEY is not set in .env")
 
 
-# ============================================================
 # LLM
-# ============================================================
-
 llm = ChatCohere(
     model=MODEL_NAME,
     temperature=0,
@@ -37,30 +23,15 @@ llm = ChatCohere(
 )
 
 
-# ============================================================
 # STRUCTURED OUTPUTS
-# ============================================================
-
-llm_structured = llm.with_structured_output(
-    CVSchema
-)
-
-llm_evaluate = llm.with_structured_output(
-    AnswerEvaluation
-)
+llm_structured = llm.with_structured_output(CVSchema)
+llm_evaluate = llm.with_structured_output(AnswerEvaluation)
 
 
-# ============================================================
 # 1. GENERATE INTERVIEW QUESTIONS
-# ============================================================
-
 def generate_questions(details: str) -> list[str]:
-
     if not details:
-
-        raise ValueError(
-            "Candidate details cannot be empty."
-        )
+        raise ValueError("Candidate details cannot be empty.")
 
     prompt = f"""
 You are an experienced technical interviewer conducting
@@ -128,26 +99,15 @@ Instructions:
 Return ONLY the numbered interview questions.
 """
 
-    # ========================================================
     # CALL LLM
-    # ========================================================
-
-    response = llm.invoke(
-        prompt
-    )
-
+    response = llm.invoke(prompt)
     content = response.content.strip()
 
-    # ========================================================
     # PARSE QUESTIONS
-    # ========================================================
-
     questions = []
-
     lines = content.splitlines()
 
     for line in lines:
-
         line = line.strip()
 
         if not line:
@@ -166,58 +126,32 @@ Return ONLY the numbered interview questions.
         ).strip()
 
         if cleaned:
+            questions.append(cleaned)
 
-            questions.append(
-                cleaned
-            )
-
-    # ========================================================
     # FALLBACK
-    # ========================================================
-
     if not questions:
+        raise ValueError("The LLM did not generate valid interview questions.")
 
-        raise ValueError(
-            "The LLM did not generate valid interview questions."
-        )
-
-    # ========================================================
     # MAXIMUM FIVE QUESTIONS
-    # ========================================================
-
     questions = questions[:5]
 
-    # ========================================================
     # VALIDATION
-    # ========================================================
-
     if len(questions) > 5:
-
         questions = questions[:5]
 
     return questions
 
 
-# ============================================================
 # 2. EVALUATE CANDIDATE ANSWER
-# ============================================================
-
 def eval_answer(
     question: str,
     answer: str
 ) -> AnswerEvaluation:
-
     if not question:
-
-        raise ValueError(
-            "Question cannot be empty."
-        )
+        raise ValueError("Question cannot be empty.")
 
     if not answer:
-
-        raise ValueError(
-            "Candidate answer cannot be empty."
-        )
+        raise ValueError("Candidate answer cannot be empty.")
 
     prompt = f"""
 You are an experienced technical interviewer evaluating
@@ -281,26 +215,14 @@ Return the evaluation according to the provided
 AnswerEvaluation schema.
 """
 
-    response = llm_evaluate.invoke(
-        prompt
-    )
-
+    response = llm_evaluate.invoke(prompt)
     return response
 
 
-# ============================================================
 # 3. EXTRACT CV INFORMATION
-# ============================================================
-
-def extract_cv_info(
-    cv: str
-) -> CVSchema:
-
+def extract_cv_info(cv: str) -> CVSchema:
     if not cv:
-
-        raise ValueError(
-            "CV text cannot be empty."
-        )
+        raise ValueError("CV text cannot be empty.")
 
     prompt = f"""
 You are a professional CV information extraction system.
@@ -364,8 +286,5 @@ Extraction rules:
 Return the information according to the provided CVSchema.
 """
 
-    response = llm_structured.invoke(
-        prompt
-    )
-
+    response = llm_structured.invoke(prompt)
     return response

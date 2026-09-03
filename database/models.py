@@ -1,7 +1,5 @@
 import uuid
-
 from datetime import datetime
-
 from sqlalchemy import (
     Column,
     Integer,
@@ -11,85 +9,61 @@ from sqlalchemy import (
     ForeignKey,
     JSON
 )
-
 from sqlalchemy.orm import relationship
-
 from database.connection import Base
 
 
-# ============================================================
 # CANDIDATE
-# ============================================================
-
 class Candidate(Base):
-
     __tablename__ = "candidates"
-
     id = Column(
         Integer,
         primary_key=True,
         index=True
     )
-
     name = Column(
         String,
         nullable=False
     )
-
     email = Column(
         String,
         nullable=True
     )
-
     phone = Column(
         String,
         nullable=True
     )
-
     location = Column(
         String,
         nullable=True
     )
-
     cv_file_path = Column(
         String,
         nullable=True
     )
-
     created_at = Column(
         DateTime,
         default=datetime.utcnow
     )
-
     # Relationships
-
     cv_chunks = relationship(
         "CVChunk",
         back_populates="candidate",
         cascade="all, delete-orphan"
     )
-
     interviews = relationship(
         "Interview",
         back_populates="candidate",
         cascade="all, delete-orphan"
     )
-
-
-# ============================================================
 # CV CHUNK
-# ============================================================
-
 class CVChunk(Base):
-
     __tablename__ = "cv_chunks"
-
     id = Column(
         Integer,
         primary_key=True,
         index=True
     )
-
     candidate_id = Column(
         Integer,
         ForeignKey(
@@ -99,48 +73,37 @@ class CVChunk(Base):
         nullable=False,
         index=True
     )
-
     content = Column(
         Text,
         nullable=False
     )
-
     section = Column(
         String,
         nullable=True
     )
-
     chunk_index = Column(
         Integer,
         nullable=True
     )
-
     chunk_metadata = Column(
         JSON,
         nullable=True
     )
-
     created_at = Column(
         DateTime,
         default=datetime.utcnow
     )
 
     # Relationship
-
     candidate = relationship(
         "Candidate",
         back_populates="cv_chunks"
     )
 
 
-# ============================================================
 # INTERVIEW
-# ============================================================
-
 class Interview(Base):
-
     __tablename__ = "interviews"
-
     id = Column(
         Integer,
         primary_key=True,
@@ -210,10 +173,7 @@ class Interview(Base):
     )
 
 
-# ============================================================
 # INTERVIEW QUESTION
-# ============================================================
-
 class InterviewQuestion(Base):
 
     __tablename__ = "interview_questions"
@@ -278,10 +238,7 @@ class InterviewQuestion(Base):
     )
 
 
-# ============================================================
 # CANDIDATE ANSWER
-# ============================================================
-
 class CandidateAnswer(Base):
 
     __tablename__ = "candidate_answers"
@@ -327,14 +284,9 @@ class CandidateAnswer(Base):
     )
 
 
-# ============================================================
 # EVALUATION
-# ============================================================
-
 class Evaluation(Base):
-
     __tablename__ = "evaluations"
-
     id = Column(
         Integer,
         primary_key=True,
@@ -409,10 +361,7 @@ class Evaluation(Base):
     )
 
 
-# ============================================================
 # HR CONVERSATION
-# ============================================================
-
 class HRConversation(Base):
 
     __tablename__ = "hr_conversations"
@@ -435,9 +384,7 @@ class HRConversation(Base):
     )
 
 
-# ============================================================
 # HR MESSAGE
-# ============================================================
 
 class HRMessage(Base):
 
