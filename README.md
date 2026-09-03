@@ -90,10 +90,3 @@ HR can then search candidate information and use the AI assistant to get insight
 * Python 3.8+
 * PostgreSQL
 * Cohere API Key
-
-## License
-
-This project is for educational/personal use.
-
-ولو ده مشروع **Graduation Project / Portfolio**، ممكن كمان نخليه أقوى شوية من ناحية الشكل والـpresentation بإضافة **Architecture + Screenshots + Demo** بدل تفاصيل الـdatabase والـtroubleshooting.
-```
