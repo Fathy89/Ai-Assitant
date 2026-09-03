@@ -47,6 +47,9 @@ if "evaluation" not in st.session_state:
 if "pending_question" not in st.session_state:
     st.session_state.pending_question = None
 
+if "interview_history" not in st.session_state:
+    st.session_state.interview_history = []
+
 
 # ============================================================
 # API FUNCTIONS
@@ -358,6 +361,11 @@ def candidate_upload_page():
                 ""
             )
 
+            questions_generated = result.get(
+                "questions_generated",
+                0
+            )
+
             st.markdown(
                 f"### Hello {candidate_name} 👋"
             )
@@ -367,6 +375,13 @@ def candidate_upload_page():
                 st.write(
                     f"📧 Interview invitation sent to: "
                     f"**{candidate_email}**"
+                )
+
+            if questions_generated:
+
+                st.info(
+                    f"🧠 Your interview contains "
+                    f"**{questions_generated} technical questions**."
                 )
 
             st.info(
@@ -380,6 +395,175 @@ def candidate_upload_page():
                 your interview.
                 """
             )
+
+
+# ============================================================
+# DISPLAY EVALUATION
+# ============================================================
+
+def display_evaluation(
+    evaluation,
+    title="📊 Question Evaluation"
+):
+
+    if not evaluation:
+        return
+
+    st.divider()
+
+    st.markdown(
+        f"## {title}"
+    )
+
+    # --------------------------------------------------------
+    # Score
+    # --------------------------------------------------------
+
+    score = evaluation.get(
+        "score"
+    )
+
+    if score is not None:
+
+        st.metric(
+            "Score",
+            f"{score}/10"
+        )
+
+    # --------------------------------------------------------
+    # Technical correctness
+    # --------------------------------------------------------
+
+    technical = evaluation.get(
+        "technical_correctness"
+    )
+
+    if technical:
+
+        st.markdown(
+            "### 🧠 Technical Correctness"
+        )
+
+        st.write(
+            technical
+        )
+
+    # --------------------------------------------------------
+    # Relevance
+    # --------------------------------------------------------
+
+    relevance = evaluation.get(
+        "relevance"
+    )
+
+    if relevance:
+
+        st.markdown(
+            "### 🎯 Relevance"
+        )
+
+        st.write(
+            relevance
+        )
+
+    # --------------------------------------------------------
+    # Depth
+    # --------------------------------------------------------
+
+    depth = evaluation.get(
+        "depth"
+    )
+
+    if depth:
+
+        st.markdown(
+            "### 📚 Depth"
+        )
+
+        st.write(
+            depth
+        )
+
+    # --------------------------------------------------------
+    # Strengths
+    # --------------------------------------------------------
+
+    strengths = evaluation.get(
+        "strengths",
+        []
+    )
+
+    if strengths:
+
+        st.markdown(
+            "### 💪 Strengths"
+        )
+
+        for item in strengths:
+
+            st.write(
+                f"• {item}"
+            )
+
+    # --------------------------------------------------------
+    # Missing points
+    # --------------------------------------------------------
+
+    missing_points = evaluation.get(
+        "missing_points",
+        []
+    )
+
+    if missing_points:
+
+        st.markdown(
+            "### ⚠️ Missing Points"
+        )
+
+        for item in missing_points:
+
+            st.write(
+                f"• {item}"
+            )
+
+    # --------------------------------------------------------
+    # Mistakes
+    # --------------------------------------------------------
+
+    mistakes = evaluation.get(
+        "mistakes",
+        []
+    )
+
+    if mistakes:
+
+        st.markdown(
+            "### ❌ Mistakes"
+        )
+
+        for item in mistakes:
+
+            st.write(
+                f"• {item}"
+            )
+
+    # --------------------------------------------------------
+    # Feedback
+    # --------------------------------------------------------
+
+    feedback = evaluation.get(
+        "overall_feedback"
+    )
+
+    if feedback:
+
+        st.markdown(
+            "### 📝 Feedback"
+        )
+
+        st.write(
+            feedback
+        )
 
 
 # ============================================================
@@ -398,9 +582,9 @@ def candidate_interview_page(token):
 
     st.divider()
 
-    # --------------------------------------------------------
-    # Load interview
-    # --------------------------------------------------------
+    # ========================================================
+    # LOAD INTERVIEW
+    # ========================================================
 
     if st.session_state.interview_data is None:
 
@@ -423,9 +607,9 @@ def candidate_interview_page(token):
             st.session_state.interview_data
         )
 
-    # --------------------------------------------------------
-    # Candidate information
-    # --------------------------------------------------------
+    # ========================================================
+    # CANDIDATE INFORMATION
+    # ========================================================
 
     candidate_name = interview.get(
         "candidate_name",
@@ -437,151 +621,227 @@ def candidate_interview_page(token):
         ""
     )
 
+    question_number = interview.get(
+        "question_number",
+        1
+    )
+
+    total_questions = interview.get(
+        "total_questions",
+        1
+    )
+
+    # Protect against invalid values
+
+    try:
+
+        question_number = int(
+            question_number
+        )
+
+    except (
+        ValueError,
+        TypeError
+    ):
+
+        question_number = 1
+
+    try:
+
+        total_questions = int(
+            total_questions
+        )
+
+    except (
+        ValueError,
+        TypeError
+    ):
+
+        total_questions = 1
+
+    if total_questions <= 0:
+
+        total_questions = 1
+
     st.success(
         f"Hello {candidate_name} 👋"
     )
 
-    # --------------------------------------------------------
-    # Already submitted
-    # --------------------------------------------------------
+    # ========================================================
+    # FINAL INTERVIEW RESULT
+    # ========================================================
 
     if st.session_state.answer_submitted:
 
         st.success(
-            "✅ Your answer has been submitted."
+            "🎉 Your technical interview is complete!"
         )
 
         st.info(
             "Thank you for completing the interview."
         )
 
-        evaluation = (
+        final_result = (
             st.session_state.evaluation
         )
 
-        if evaluation:
+        if final_result:
 
-            st.divider()
+            # ------------------------------------------------
+            # Final score
+            # ------------------------------------------------
 
-            st.markdown(
-                "## 📊 Interview Result"
+            final_score = final_result.get(
+                "final_score"
             )
 
-            score = evaluation.get(
-                "score"
-            )
+            if final_score is not None:
 
-            if score is not None:
+                st.markdown(
+                    "## 🏆 Final Interview Score"
+                )
 
                 st.metric(
                     "Overall Score",
-                    f"{score}/10"
+                    f"{final_score}/10"
                 )
 
-            technical = evaluation.get(
-                "technical_correctness"
+            # ------------------------------------------------
+            # Questions completed
+            # ------------------------------------------------
+
+            completed_questions = (
+                final_result.get(
+                    "total_questions"
+                )
             )
 
-            if technical:
+            if completed_questions is not None:
 
-                st.markdown(
-                    "### 🧠 Technical Correctness"
+                st.write(
+                    f"✅ Questions answered: "
+                    f"**{completed_questions}**"
                 )
 
-                st.write(technical)
+            # ------------------------------------------------
+            # Show all previous evaluations
+            # ------------------------------------------------
 
-            relevance = evaluation.get(
-                "relevance"
-            )
+            if st.session_state.interview_history:
 
-            if relevance:
-
-                st.markdown(
-                    "### 🎯 Relevance"
-                )
-
-                st.write(relevance)
-
-            depth = evaluation.get(
-                "depth"
-            )
-
-            if depth:
+                st.divider()
 
                 st.markdown(
-                    "### 📚 Depth"
+                    "## 📋 Interview Summary"
                 )
 
-                st.write(depth)
+                for item in (
+                    st.session_state.interview_history
+                ):
 
-            strengths = evaluation.get(
-                "strengths",
-                []
-            )
-
-            if strengths:
-
-                st.markdown(
-                    "### 💪 Strengths"
-                )
-
-                for item in strengths:
-
-                    st.write(
-                        f"• {item}"
+                    question_num = item.get(
+                        "question_number"
                     )
 
-            missing_points = evaluation.get(
-                "missing_points",
-                []
-            )
-
-            if missing_points:
-
-                st.markdown(
-                    "### ⚠️ Missing Points"
-                )
-
-                for item in missing_points:
-
-                    st.write(
-                        f"• {item}"
+                    score = item.get(
+                        "score"
                     )
 
-            mistakes = evaluation.get(
-                "mistakes",
-                []
+                    with st.expander(
+                        f"Question {question_num} "
+                        f"— Score: {score}/10"
+                        if score is not None
+                        else f"Question {question_num}"
+                    ):
+
+                        st.write(
+                            f"**Question:** "
+                            f"{item.get('question', '')}"
+                        )
+
+                        if item.get(
+                            "answer"
+                        ):
+
+                            st.write(
+                                f"**Your Answer:** "
+                                f"{item.get('answer')}"
+                            )
+
+                        if score is not None:
+
+                            st.metric(
+                                "Score",
+                                f"{score}/10"
+                            )
+
+                        feedback = item.get(
+                            "overall_feedback"
+                        )
+
+                        if feedback:
+
+                            st.markdown(
+                                "### 📝 Feedback"
+                            )
+
+                            st.write(
+                                feedback
+                            )
+
+            # ------------------------------------------------
+            # Last question evaluation
+            # ------------------------------------------------
+
+            last_evaluation = (
+                final_result.get(
+                    "evaluation",
+                    {}
+                )
             )
 
-            if mistakes:
+            if last_evaluation:
 
-                st.markdown(
-                    "### ❌ Mistakes"
+                display_evaluation(
+                    last_evaluation,
+                    title="📊 Final Question Evaluation"
                 )
-
-                for item in mistakes:
-
-                    st.write(
-                        f"• {item}"
-                    )
-
-            feedback = evaluation.get(
-                "overall_feedback"
-            )
-
-            if feedback:
-
-                st.markdown(
-                    "### 📝 Overall Feedback"
-                )
-
-                st.write(feedback)
 
         return
 
-    # --------------------------------------------------------
-    # Question
-    # --------------------------------------------------------
+    # ========================================================
+    # PROGRESS
+    # ========================================================
+
+    st.markdown(
+        f"### Question {question_number} "
+        f"of {total_questions}"
+    )
+
+    progress = (
+        question_number
+        / total_questions
+    )
+
+    progress = min(
+        max(progress, 0.0),
+        1.0
+    )
+
+    st.progress(
+        progress
+    )
+
+    st.caption(
+        f"Progress: "
+        f"{int(progress * 100)}%"
+    )
+
+    st.divider()
+
+    # ========================================================
+    # QUESTION
+    # ========================================================
 
     st.markdown(
         "## 🧠 Technical Question"
@@ -593,9 +853,61 @@ def candidate_interview_page(token):
 
     st.divider()
 
-    # --------------------------------------------------------
-    # Answer
-    # --------------------------------------------------------
+    # ========================================================
+    # PREVIOUS EVALUATIONS
+    # ========================================================
+
+    if st.session_state.interview_history:
+
+        with st.expander(
+            "📋 Previous Question Results"
+        ):
+
+            for item in (
+                st.session_state.interview_history
+            ):
+
+                question_num = item.get(
+                    "question_number"
+                )
+
+                score = item.get(
+                    "score"
+                )
+
+                st.markdown(
+                    f"### Question {question_num}"
+                )
+
+                if item.get("question"):
+
+                    st.write(
+                        f"**Question:** "
+                        f"{item.get('question')}"
+                    )
+
+                if score is not None:
+
+                    st.write(
+                        f"⭐ **Score:** "
+                        f"{score}/10"
+                    )
+
+                feedback = item.get(
+                    "overall_feedback"
+                )
+
+                if feedback:
+
+                    st.write(
+                        feedback
+                    )
+
+                st.divider()
+
+    # ========================================================
+    # ANSWER
+    # ========================================================
 
     st.markdown(
         "## ✍️ Your Answer"
@@ -607,12 +919,12 @@ def candidate_interview_page(token):
         placeholder=(
             "Explain your answer clearly..."
         ),
-        key="candidate_answer"
+        key=f"candidate_answer_{question_number}"
     )
 
-    # --------------------------------------------------------
-    # Submit answer
-    # --------------------------------------------------------
+    # ========================================================
+    # SUBMIT ANSWER
+    # ========================================================
 
     if st.button(
         "🚀 Submit Answer",
@@ -639,11 +951,191 @@ def candidate_interview_page(token):
 
         if result:
 
-            st.session_state.answer_submitted = True
+            # =================================================
+            # INTERVIEW COMPLETED
+            # =================================================
 
-            st.session_state.evaluation = result
+            if result.get(
+                "completed",
+                False
+            ):
 
-            st.rerun()
+                # ------------------------------------------------
+                # Save the final question evaluation
+                # ------------------------------------------------
+
+                final_evaluation = result.get(
+                    "evaluation",
+                    {}
+                )
+
+                st.session_state.interview_history.append(
+                    {
+                        "question_number":
+                            result.get(
+                                "current_question_number",
+                                question_number
+                            ),
+
+                        "question":
+                            question,
+
+                        "answer":
+                            answer,
+
+                        "score":
+                            final_evaluation.get(
+                                "score"
+                            ),
+
+                        "technical_correctness":
+                            final_evaluation.get(
+                                "technical_correctness"
+                            ),
+
+                        "relevance":
+                            final_evaluation.get(
+                                "relevance"
+                            ),
+
+                        "depth":
+                            final_evaluation.get(
+                                "depth"
+                            ),
+
+                        "overall_feedback":
+                            final_evaluation.get(
+                                "overall_feedback"
+                            )
+                    }
+                )
+
+                # ------------------------------------------------
+                # Save final result
+                # ------------------------------------------------
+
+                st.session_state.answer_submitted = True
+
+                st.session_state.evaluation = result
+
+                st.rerun()
+
+            # =================================================
+            # MORE QUESTIONS REMAIN
+            # =================================================
+
+            else:
+
+                current_evaluation = (
+                    result.get(
+                        "evaluation",
+                        {}
+                    )
+                )
+
+                # ------------------------------------------------
+                # Save current question result
+                # ------------------------------------------------
+
+                st.session_state.interview_history.append(
+                    {
+                        "question_number":
+                            result.get(
+                                "current_question_number",
+                                question_number
+                            ),
+
+                        "question":
+                            question,
+
+                        "answer":
+                            answer,
+
+                        "score":
+                            current_evaluation.get(
+                                "score"
+                            ),
+
+                        "technical_correctness":
+                            current_evaluation.get(
+                                "technical_correctness"
+                            ),
+
+                        "relevance":
+                            current_evaluation.get(
+                                "relevance"
+                            ),
+
+                        "depth":
+                            current_evaluation.get(
+                                "depth"
+                            ),
+
+                        "overall_feedback":
+                            current_evaluation.get(
+                                "overall_feedback"
+                            )
+                    }
+                )
+
+                # ------------------------------------------------
+                # Update interview data
+                # ------------------------------------------------
+
+                st.session_state.interview_data = {
+
+                    "candidate_name":
+                        candidate_name,
+
+                    "candidate_id":
+                        interview.get(
+                            "candidate_id"
+                        ),
+
+                    "interview_id":
+                        interview.get(
+                            "interview_id"
+                        ),
+
+                    "question_id":
+                        result.get(
+                            "next_question_id"
+                        ),
+
+                    "question":
+                        result.get(
+                            "next_question",
+                            ""
+                        ),
+
+                    "question_number":
+                        result.get(
+                            "next_question_number",
+                            question_number + 1
+                        ),
+
+                    "total_questions":
+                        result.get(
+                            "total_questions",
+                            total_questions
+                        ),
+
+                    "answered_questions":
+                        result.get(
+                            "answered_questions"
+                        ),
+
+                    "status":
+                        result.get(
+                            "status"
+                        )
+                }
+
+                # ------------------------------------------------
+                # Move to next question
+                # ------------------------------------------------
+
+                st.rerun()
 
 
 # ============================================================
@@ -659,7 +1151,9 @@ def get_interview_status_display(status):
             "Not Started"
         )
 
-    status = str(status).lower().strip()
+    status = str(
+        status
+    ).lower().strip()
 
     if status in [
         "completed",
@@ -730,18 +1224,21 @@ def format_score(score):
 
         return "⭐ No score"
 
-    score_string = str(score).strip()
+    score_string = str(
+        score
+    ).strip()
 
     if not score_string:
 
         return "⭐ No score"
 
-    # If backend already sends something like 85/100
+    # Backend already sends something like 85/100
+
     if "/" in score_string:
 
         return f"⭐ {score_string}"
 
-    return f"⭐ {score_string}/100"
+    return f"⭐ {score_string}/10"
 
 
 # ============================================================
@@ -773,7 +1270,8 @@ def render_hr_sidebar():
         # ----------------------------------------------------
 
         all_selected = (
-            st.session_state.selected_candidate is None
+            st.session_state.selected_candidate
+            is None
         )
 
         if st.button(
@@ -989,7 +1487,9 @@ def render_hr_sidebar():
 
         ]
 
-        for index, example in enumerate(examples):
+        for index, example in enumerate(
+            examples
+        ):
 
             if st.button(
                 example,
@@ -1015,7 +1515,8 @@ def hr_dashboard():
     )
 
     st.caption(
-        "AI-powered candidate search and recruitment assistant"
+        "AI-powered candidate search and "
+        "recruitment assistant"
     )
 
     # ========================================================
@@ -1180,7 +1681,7 @@ def hr_dashboard():
 
                             st.write(
                                 f"⭐ **Score:** "
-                                f"{score}/100"
+                                f"{score}/10"
                             )
 
                         recommendation = info.get(
@@ -1422,7 +1923,7 @@ def hr_dashboard():
 
                                 st.write(
                                     f"⭐ **Score:** "
-                                    f"{score}/100"
+                                    f"{score}/10"
                                 )
 
                             recommendation = info.get(
@@ -1615,3 +2116,4 @@ else:
             st.query_params["page"] = "hr"
 
             st.rerun()
+

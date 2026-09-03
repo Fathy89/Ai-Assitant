@@ -54,7 +54,7 @@ llm_evaluate = llm.with_structured_output(
 # 1. GENERATE INTERVIEW QUESTIONS
 # ============================================================
 
-def generate_question(details: str) -> list[str]:
+def generate_questions(details: str) -> list[str]:
 
     if not details:
 

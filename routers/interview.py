@@ -33,6 +33,49 @@ class AnswerRequest(BaseModel):
 
 
 # ============================================================
+# HELPER
+# ============================================================
+
+def get_next_unanswered_question(
+    interview_id: int,
+    db: Session
+):
+    """
+    Return the first interview question that does not
+    have a candidate answer yet.
+    """
+
+    questions = (
+        db.query(InterviewQuestion)
+        .filter(
+            InterviewQuestion.interview_id
+            == interview_id
+        )
+        .order_by(
+            InterviewQuestion.question_order
+        )
+        .all()
+    )
+
+    for question in questions:
+
+        existing_answer = (
+            db.query(CandidateAnswer)
+            .filter(
+                CandidateAnswer.question_id
+                == question.id
+            )
+            .first()
+        )
+
+        if existing_answer is None:
+
+            return question
+
+    return None
+
+
+# ============================================================
 # GET INTERVIEW
 # ============================================================
 
@@ -57,6 +100,10 @@ def get_interview(
             detail="Interview not found."
         )
 
+    # --------------------------------------------------------
+    # Already completed
+    # --------------------------------------------------------
+
     if interview.status == "completed":
 
         raise HTTPException(
@@ -64,23 +111,32 @@ def get_interview(
             detail="This interview has already been completed."
         )
 
-    question = (
-        db.query(InterviewQuestion)
-        .filter(
-            InterviewQuestion.interview_id
-            == interview.id
-        )
-        .order_by(
-            InterviewQuestion.question_order
-        )
-        .first()
+    # --------------------------------------------------------
+    # Find next unanswered question
+    # --------------------------------------------------------
+
+    question = get_next_unanswered_question(
+        interview_id=interview.id,
+        db=db
     )
 
     if not question:
 
+        # No questions remain.
+        # This should normally only happen if the interview
+        # was completed previously.
+
+        interview.status = "completed"
+
+        if interview.finished_at is None:
+
+            interview.finished_at = datetime.utcnow()
+
+        db.commit()
+
         raise HTTPException(
-            status_code=404,
-            detail="Interview question not found."
+            status_code=400,
+            detail="All interview questions have been answered."
         )
 
     # --------------------------------------------------------
@@ -97,7 +153,45 @@ def get_interview(
 
         db.refresh(interview)
 
+    # --------------------------------------------------------
+    # Count questions
+    # --------------------------------------------------------
+
+    total_questions = (
+        db.query(InterviewQuestion)
+        .filter(
+            InterviewQuestion.interview_id
+            == interview.id
+        )
+        .count()
+    )
+
+    answered_questions = (
+        db.query(CandidateAnswer)
+        .join(
+            InterviewQuestion,
+            CandidateAnswer.question_id
+            == InterviewQuestion.id
+        )
+        .filter(
+            InterviewQuestion.interview_id
+            == interview.id
+        )
+        .count()
+    )
+
+    # --------------------------------------------------------
+    # Current question number
+    # --------------------------------------------------------
+
+    question_number = question.question_order
+
+    # --------------------------------------------------------
+    # Response
+    # --------------------------------------------------------
+
     return {
+
         "candidate_id":
             interview.candidate.id,
 
@@ -112,6 +206,15 @@ def get_interview(
 
         "question":
             question.question,
+
+        "question_number":
+            question_number,
+
+        "answered_questions":
+            answered_questions,
+
+        "total_questions":
+            total_questions,
 
         "status":
             interview.status
@@ -128,6 +231,10 @@ def submit_answer(
     request: AnswerRequest,
     db: Session = Depends(get_db)
 ):
+
+    # --------------------------------------------------------
+    # Validate answer
+    # --------------------------------------------------------
 
     if not request.answer.strip():
 
@@ -163,26 +270,19 @@ def submit_answer(
         )
 
     # ========================================================
-    # Find question
+    # Find CURRENT unanswered question
     # ========================================================
 
-    question = (
-        db.query(InterviewQuestion)
-        .filter(
-            InterviewQuestion.interview_id
-            == interview.id
-        )
-        .order_by(
-            InterviewQuestion.question_order
-        )
-        .first()
+    question = get_next_unanswered_question(
+        interview_id=interview.id,
+        db=db
     )
 
     if not question:
 
         raise HTTPException(
-            status_code=404,
-            detail="Interview question not found."
+            status_code=400,
+            detail="No unanswered questions remain."
         )
 
     # ========================================================
@@ -202,7 +302,9 @@ def submit_answer(
 
         raise HTTPException(
             status_code=500,
-            detail=f"Answer evaluation failed: {str(e)}"
+            detail=(
+                f"Answer evaluation failed: {str(e)}"
+            )
         )
 
     # ========================================================
@@ -211,7 +313,9 @@ def submit_answer(
 
     candidate_answer = CandidateAnswer(
         question_id=question.id,
+
         answer=request.answer,
+
         answered_at=datetime.utcnow()
     )
 
@@ -274,24 +378,22 @@ def submit_answer(
 
     db.add(evaluation_record)
 
+    db.flush()
+
     # ========================================================
-    # Complete interview
+    # Find next question
     # ========================================================
 
-    interview.status = "completed"
-
-    interview.finished_at = datetime.utcnow()
-
-    interview.overall_score = str(
-        evaluation.score
+    next_question = get_next_unanswered_question(
+        interview_id=interview.id,
+        db=db
     )
 
-    db.commit()
+    # ========================================================
+    # Current evaluation response
+    # ========================================================
 
-    return {
-
-        "message":
-            "Answer submitted successfully.",
+    current_evaluation = {
 
         "score":
             evaluation.score,
@@ -317,3 +419,184 @@ def submit_answer(
         "overall_feedback":
             evaluation.overall_feedback
     }
+
+    # ========================================================
+    # MORE QUESTIONS REMAIN
+    # ========================================================
+
+    if next_question:
+
+        interview.status = "in_progress"
+
+        db.commit()
+
+        # Count answered questions
+
+        answered_questions = (
+            db.query(CandidateAnswer)
+            .join(
+                InterviewQuestion,
+                CandidateAnswer.question_id
+                == InterviewQuestion.id
+            )
+            .filter(
+                InterviewQuestion.interview_id
+                == interview.id
+            )
+            .count()
+        )
+
+        total_questions = (
+            db.query(InterviewQuestion)
+            .filter(
+                InterviewQuestion.interview_id
+                == interview.id
+            )
+            .count()
+        )
+
+        return {
+
+            "message":
+                "Answer submitted successfully.",
+
+            "completed":
+                False,
+
+            "current_question_id":
+                question.id,
+
+            "current_question_number":
+                question.question_order,
+
+            "evaluation":
+                current_evaluation,
+
+            "next_question_id":
+                next_question.id,
+
+            "next_question":
+                next_question.question,
+
+            "next_question_number":
+                next_question.question_order,
+
+            "answered_questions":
+                answered_questions,
+
+            "total_questions":
+                total_questions,
+
+            "status":
+                interview.status
+        }
+
+    # ========================================================
+    # ALL QUESTIONS COMPLETED
+    # ========================================================
+
+    evaluations = (
+        db.query(Evaluation)
+        .join(
+            CandidateAnswer,
+            Evaluation.answer_id
+            == CandidateAnswer.id
+        )
+        .join(
+            InterviewQuestion,
+            CandidateAnswer.question_id
+            == InterviewQuestion.id
+        )
+        .filter(
+            InterviewQuestion.interview_id
+            == interview.id
+        )
+        .all()
+    )
+
+    # --------------------------------------------------------
+    # Calculate final score
+    # --------------------------------------------------------
+
+    scores = []
+
+    for item in evaluations:
+
+        try:
+
+            score = float(
+                item.overall_score
+            )
+
+            scores.append(score)
+
+        except (
+            ValueError,
+            TypeError
+        ):
+
+            continue
+
+    if scores:
+
+        final_score = (
+            sum(scores)
+            / len(scores)
+        )
+
+        final_score = round(
+            final_score,
+            2
+        )
+
+    else:
+
+        final_score = float(
+            evaluation.score
+        )
+
+    # --------------------------------------------------------
+    # Complete interview
+    # --------------------------------------------------------
+
+    interview.status = "completed"
+
+    interview.finished_at = datetime.utcnow()
+
+    interview.overall_score = str(
+        final_score
+    )
+
+    db.commit()
+
+    # ========================================================
+    # FINAL RESPONSE
+    # ========================================================
+
+    return {
+
+        "message":
+            "Interview completed successfully.",
+
+        "completed":
+            True,
+
+        "current_question_id":
+            question.id,
+
+        "current_question_number":
+            question.question_order,
+
+        "total_questions":
+            len(evaluations),
+
+        "final_score":
+            final_score,
+
+        "evaluation":
+            current_evaluation,
+
+        "status":
+            "completed"
+    }
+
