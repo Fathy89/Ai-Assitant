@@ -2,6 +2,7 @@ from models.cv_extracted import CVSchema, AnswerEvaluation
 
 from dotenv import load_dotenv
 import os
+import re
 
 from langchain_cohere import ChatCohere
 
@@ -13,10 +14,16 @@ from langchain_cohere import ChatCohere
 load_dotenv()
 
 COHERE_API_KEY = os.getenv("COHERE_API_KEY")
-MODEL_NAME = os.getenv("MODEL_NAME", "command-a-03-2025")
+
+MODEL_NAME = os.getenv(
+    "MODEL_NAME",
+    "command-a-03-2025"
+)
 
 if not COHERE_API_KEY:
-    raise ValueError("COHERE_API_KEY is not set in .env")
+    raise ValueError(
+        "COHERE_API_KEY is not set in .env"
+    )
 
 
 # ============================================================
@@ -30,9 +37,13 @@ llm = ChatCohere(
 )
 
 
-# Structured outputs
+# ============================================================
+# STRUCTURED OUTPUTS
+# ============================================================
 
-llm_structured = llm.with_structured_output(CVSchema)
+llm_structured = llm.with_structured_output(
+    CVSchema
+)
 
 llm_evaluate = llm.with_structured_output(
     AnswerEvaluation
@@ -40,12 +51,13 @@ llm_evaluate = llm.with_structured_output(
 
 
 # ============================================================
-# 1. Generate Interview Question
+# 1. GENERATE INTERVIEW QUESTIONS
 # ============================================================
 
-def generate_question(details: str) -> str:
+def generate_question(details: str) -> list[str]:
 
     if not details:
+
         raise ValueError(
             "Candidate details cannot be empty."
         )
@@ -54,8 +66,8 @@ def generate_question(details: str) -> str:
 You are an experienced technical interviewer conducting
 a professional technical interview.
 
-Your task is to generate ONE interview question based on
-the candidate's background and experience.
+Your task is to generate AT MOST FIVE interview questions
+based on the candidate's background and experience.
 
 Candidate information:
 
@@ -76,7 +88,7 @@ Instructions:
    - What are your strengths?
    - Why should we hire you?
 
-4. Ask a question that requires the candidate to explain
+4. Ask questions that require the candidate to explain
    their reasoning, implementation decisions, trade-offs,
    or problem-solving approach.
 
@@ -90,21 +102,104 @@ Instructions:
 7. Adjust the difficulty to the candidate's apparent
    experience level.
 
-8. The question must be clear, specific, and answerable
+8. Each question must be clear, specific, and answerable
    by the candidate.
 
-9. Generate ONLY ONE question.
+9. Generate between ONE and FIVE questions.
 
-Return ONLY the interview question.
+10. Do not generate more than FIVE questions.
+
+11. Avoid asking multiple questions that test exactly
+    the same concept.
+
+12. Make the questions progressively challenging when
+    enough information about the candidate is available.
+
+13. Each question MUST be on its own line.
+
+14. Number the questions exactly like:
+
+1. First question
+2. Second question
+3. Third question
+
+15. Do NOT put multiple questions inside one numbered item.
+
+Return ONLY the numbered interview questions.
 """
 
-    response = llm.invoke(prompt)
+    # ========================================================
+    # CALL LLM
+    # ========================================================
 
-    return response.content.strip()
+    response = llm.invoke(
+        prompt
+    )
+
+    content = response.content.strip()
+
+    # ========================================================
+    # PARSE QUESTIONS
+    # ========================================================
+
+    questions = []
+
+    lines = content.splitlines()
+
+    for line in lines:
+
+        line = line.strip()
+
+        if not line:
+            continue
+
+        # Remove numbering:
+        #
+        # 1. Question
+        # 2) Question
+        # 3- Question
+        #
+        cleaned = re.sub(
+            r"^\s*\d+\s*[\.\)\-:]\s*",
+            "",
+            line
+        ).strip()
+
+        if cleaned:
+
+            questions.append(
+                cleaned
+            )
+
+    # ========================================================
+    # FALLBACK
+    # ========================================================
+
+    if not questions:
+
+        raise ValueError(
+            "The LLM did not generate valid interview questions."
+        )
+
+    # ========================================================
+    # MAXIMUM FIVE QUESTIONS
+    # ========================================================
+
+    questions = questions[:5]
+
+    # ========================================================
+    # VALIDATION
+    # ========================================================
+
+    if len(questions) > 5:
+
+        questions = questions[:5]
+
+    return questions
 
 
 # ============================================================
-# 2. Evaluate Candidate Answer
+# 2. EVALUATE CANDIDATE ANSWER
 # ============================================================
 
 def eval_answer(
@@ -113,11 +208,13 @@ def eval_answer(
 ) -> AnswerEvaluation:
 
     if not question:
+
         raise ValueError(
             "Question cannot be empty."
         )
 
     if not answer:
+
         raise ValueError(
             "Candidate answer cannot be empty."
         )
@@ -184,18 +281,23 @@ Return the evaluation according to the provided
 AnswerEvaluation schema.
 """
 
-    response = llm_evaluate.invoke(prompt)
+    response = llm_evaluate.invoke(
+        prompt
+    )
 
     return response
 
 
 # ============================================================
-# 3. Extract CV Information
+# 3. EXTRACT CV INFORMATION
 # ============================================================
 
-def extract_cv_info(cv: str) -> CVSchema:
+def extract_cv_info(
+    cv: str
+) -> CVSchema:
 
     if not cv:
+
         raise ValueError(
             "CV text cannot be empty."
         )
@@ -262,6 +364,8 @@ Extraction rules:
 Return the information according to the provided CVSchema.
 """
 
-    response = llm_structured.invoke(prompt)
+    response = llm_structured.invoke(
+        prompt
+    )
 
     return response

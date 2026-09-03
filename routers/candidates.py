@@ -20,7 +20,7 @@ from Services.pdf_service import extract_pdf_text
 
 from Services.llm_handel import (
     extract_cv_info,
-    generate_question
+    generate_questions
 )
 
 from Services.email_service import (
@@ -33,22 +33,6 @@ from Services.cv_service import (
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-
-router = APIRouter()
-
-
-# ============================================================
-# GET ALL CANDIDATES
-# ============================================================
-
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
-
-from database.connection import get_db
-from database.models import (
-    Candidate,
-    Interview
-)
 
 router = APIRouter()
 
@@ -79,8 +63,7 @@ def get_candidates(
         interview = (
             db.query(Interview)
             .filter(
-                Interview.candidate_id
-                == candidate.id
+                Interview.candidate_id == candidate.id
             )
             .order_by(
                 Interview.id.desc()
@@ -93,13 +76,9 @@ def get_candidates(
         # ----------------------------------------------------
 
         interview_status = "not_started"
-
         overall_score = None
-
         interview_id = None
-
         started_at = None
-
         finished_at = None
 
         # ----------------------------------------------------
@@ -115,17 +94,11 @@ def get_candidates(
                 or "pending"
             )
 
-            overall_score = (
-                interview.overall_score
-            )
+            overall_score = interview.overall_score
 
-            started_at = (
-                interview.started_at
-            )
+            started_at = interview.started_at
 
-            finished_at = (
-                interview.finished_at
-            )
+            finished_at = interview.finished_at
 
         # ----------------------------------------------------
         # Candidate response
@@ -143,30 +116,25 @@ def get_candidates(
 
                 "location": candidate.location,
 
-                "cv_file_path":
-                    candidate.cv_file_path,
+                "cv_file_path": candidate.cv_file_path,
 
-                "interview_id":
-                    interview_id,
+                "interview_id": interview_id,
 
-                "interview_status":
-                    interview_status,
+                "interview_status": interview_status,
 
-                "overall_score":
-                    overall_score,
+                "overall_score": overall_score,
 
-                "started_at":
-                    started_at,
+                "started_at": started_at,
 
-                "finished_at":
-                    finished_at,
+                "finished_at": finished_at,
 
-                "created_at":
-                    candidate.created_at
+                "created_at": candidate.created_at
             }
         )
 
     return result
+
+
 # ============================================================
 # UPLOAD CV
 # ============================================================
@@ -182,12 +150,14 @@ async def upload_cv(
     # --------------------------------------------------------
 
     if not file.filename:
+
         raise HTTPException(
             status_code=400,
             detail="No file was provided."
         )
 
     if not file.filename.lower().endswith(".pdf"):
+
         raise HTTPException(
             status_code=400,
             detail="Only PDF files are allowed."
@@ -202,6 +172,7 @@ async def upload_cv(
         pdf_bytes = await file.read()
 
         if not pdf_bytes:
+
             raise HTTPException(
                 status_code=400,
                 detail="The uploaded file is empty."
@@ -234,7 +205,10 @@ async def upload_cv(
 
         cv_data = extract_cv_info(cv_text)
 
-        if not cv_data.email or cv_data.email == "Unknown":
+        if (
+            not cv_data.email
+            or cv_data.email == "Unknown"
+        ):
 
             raise HTTPException(
                 status_code=400,
@@ -258,7 +232,9 @@ async def upload_cv(
 
         db.add(candidate)
 
-        # Flush gives us candidate.id without committing yet.
+        # Flush gives us candidate.id
+        # without committing yet.
+
         db.flush()
 
         print(
@@ -375,19 +351,35 @@ Languages:
 """
 
         # ====================================================
-        # 8. GENERATE INTERVIEW QUESTION
+        # 8. GENERATE INTERVIEW QUESTIONS
         # ====================================================
 
-        question = generate_question(details)
+        questions = generate_questions(details)
 
-        if not question:
+        if not questions:
 
             raise ValueError(
-                "Failed to generate interview question."
+                "Failed to generate interview questions."
             )
 
+        # ----------------------------------------------------
+        # Make sure the result is a list
+        # ----------------------------------------------------
+
+        if isinstance(questions, str):
+
+            questions = [
+                questions
+            ]
+
+        # ----------------------------------------------------
+        # Maximum 5 questions
+        # ----------------------------------------------------
+
+        questions = questions[:5]
+
         print(
-            f"Generated interview question "
+            f"Generated {len(questions)} interview questions "
             f"for candidate {candidate.id}"
         )
 
@@ -403,7 +395,9 @@ Languages:
 
         db.add(interview)
 
-        # Flush so interview.token is available.
+        # Flush so interview.id and interview.token
+        # are available.
+
         db.flush()
 
         print(
@@ -412,18 +406,48 @@ Languages:
         )
 
         # ====================================================
-        # 10. CREATE INTERVIEW QUESTION
+        # 10. CREATE INTERVIEW QUESTIONS
         # ====================================================
 
-        interview_question = InterviewQuestion(
-            interview_id=interview.id,
-            question=question,
-            question_type="technical",
-            difficulty="adaptive",
-            question_order=1
-        )
+        for index, question in enumerate(
+            questions,
+            start=1
+        ):
 
-        db.add(interview_question)
+            # ------------------------------------------------
+            # Safety check
+            # ------------------------------------------------
+
+            if not question:
+                continue
+
+            question = str(question).strip()
+
+            if not question:
+                continue
+
+            # ------------------------------------------------
+            # Create database row
+            # ------------------------------------------------
+
+            interview_question = InterviewQuestion(
+                interview_id=interview.id,
+
+                question=question,
+
+                question_type="technical",
+
+                difficulty="adaptive",
+
+                question_order=index
+            )
+
+            db.add(interview_question)
+
+            print(
+                f"Question {index} created: "
+                f"{question}"
+            )
 
         # ====================================================
         # 11. BUILD INTERVIEW URL
@@ -466,8 +490,7 @@ Languages:
 
         except Exception as email_error:
 
-            # The candidate and interview are already safely
-            # stored in PostgreSQL.
+            # Candidate + interview are already stored.
 
             email_status = "failed"
 
@@ -481,22 +504,35 @@ Languages:
         # ====================================================
 
         return {
+
             "message": (
                 "CV processed successfully. "
                 "Interview invitation created."
             ),
 
-            "candidate_id": candidate.id,
+            "candidate_id":
+                candidate.id,
 
-            "candidate_name": candidate.name,
+            "candidate_name":
+                candidate.name,
 
-            "email": candidate.email,
+            "email":
+                candidate.email,
 
-            "interview_id": interview.id,
+            "interview_id":
+                interview.id,
 
-            "email_status": email_status,
+            "questions_generated":
+                len(questions),
 
-            "indexed_chunks": len(chunks)
+            "questions":
+                questions,
+
+            "email_status":
+                email_status,
+
+            "indexed_chunks":
+                len(chunks)
         }
 
     # ========================================================
@@ -533,7 +569,9 @@ Languages:
 # GET CANDIDATE INTERVIEW
 # ============================================================
 
-@router.get("/{candidate_id}/interview/{interview_id}")
+@router.get(
+    "/{candidate_id}/interview/{interview_id}"
+)
 def get_candidate_interview(
     candidate_id: int,
     interview_id: int,
@@ -557,12 +595,16 @@ def get_candidate_interview(
         )
 
     return {
-        "interview_id": interview.id,
 
-        "candidate_id": interview.candidate_id,
+        "interview_id":
+            interview.id,
 
-        "token": interview.token,
+        "candidate_id":
+            interview.candidate_id,
 
-        "status": interview.status
+        "token":
+            interview.token,
+
+        "status":
+            interview.status
     }
-
